@@ -1,39 +1,73 @@
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
+import time
 
-# Chrome tarayıcısını başlatma
+# Chrome başlat
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
 
-# Sayfayı açma
 driver.get("https://www.hakmarexpress.com.tr/kategoriler")
 
-# Kategorilerin bulunduğu öğenin yüklenmesini bekle
 WebDriverWait(driver, 10).until(
     EC.presence_of_element_located((By.CLASS_NAME, "categories"))
 )
 
-# Sayfa kaynağını almak
-html_content = driver.page_source
+# Kategorileri al
+categories = driver.find_elements(By.CLASS_NAME, 'category-title')
 
-# BeautifulSoup ile sayfa kaynağını parse etme
-soup = BeautifulSoup(html_content, 'html.parser')
+for i in range(len(categories)):  
+    categories = driver.find_elements(By.CLASS_NAME, 'category-title')  # Kategorileri tekrar bul
+    category = categories[i]
+    category_name = category.text.strip()
+    print(f"Kategorilere Tıklanıyor: {category_name}")
 
-# Kategori başlıklarını ve linklerini çekme
-categories = soup.find_all('div', class_='category-title')
+    # Kategoriye tıkla
+    ActionChains(driver).move_to_element(category).click().perform()
 
-# Kategorilerin adlarını ve linklerini yazdırma
-for category in categories:
-    category_name = category.get_text(strip=True)
-    # Bağlantının bulunduğu <a> etiketi varsa çekme
-    category_link = category.find_parent('a')['href'] if category.find_parent('a') else None
-    
-    print(f"Kategori Adı: {category_name}")
-    print(f"Kategori Linki: {category_link}")
+    # Sayfanın yüklenmesini bekle
+    time.sleep(3)
+    try:
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_all_elements_located((By.CLASS_NAME, 'product-price'))
+        )
+    except:
+        print(f"HATA: '{category_name}' kategorisinde ürün bulunamadı veya HTML yapısı farklı!")
+        driver.back()  
+        WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "categories"))
+        )
+        continue  # Sonraki kategoriye geç
 
-# Tarayıcıyı kapatma
+    # Sayfayı kaydırarak tüm ürünleri yükle
+    last_height = driver.execute_script("return document.body.scrollHeight")
+
+    while True:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)  # Yeni öğelerin yüklenmesi için bekle
+
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+    # Ürünleri listele
+    product_names = driver.find_elements(By.CLASS_NAME, 'product-title')  
+    product_prices = driver.find_elements(By.CLASS_NAME, 'product-price')
+
+    if not product_names or not product_prices:
+        print(f"UYARI: '{category_name}' kategorisinde ürün bilgisi alınamadı!")
+
+    for product_name, product_price in zip(product_names, product_prices):
+        print(f"Ürün Adı: {product_name.text.strip()} - Fiyat: {product_price.text.strip()}")
+
+    driver.back()  
+
+    WebDriverWait(driver, 50).until(
+        EC.presence_of_element_located((By.CLASS_NAME, "categories"))
+    )
+
 driver.quit()
